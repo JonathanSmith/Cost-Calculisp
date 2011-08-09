@@ -255,6 +255,7 @@
     
 ;;caveat here is that anything which happens 
 ;;consequent to a par must be within the 'continuation' body.
+
 (defmacro par (functions &body continuation)
   (let ((continuation `(lambda () ,@continuation))
 	(gcontsym (gensym))
