@@ -46,20 +46,7 @@
 
 (defvar bind-translation nil)
 
-(defun *-> (channel val)
-    (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
-      (enqueue val (channels::channel-queue channel))
-      (sb-thread:condition-notify (channels::channel-waitqueue channel))
-      (next)))
 
-(defun <-* (channel)
-  (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
-    (let ((qval (dequeue (channels::channel-queue channel))))
-      (if (eq qval queue-empty)
-	  (yield)
-	  (progn
-	    (push qval stack)
-	    (next))))))
 
 
 (defmacro with-proc (proc &body body)
@@ -161,6 +148,21 @@
   (pop heap)
   (pop execution)
   (pop ptr))
+
+(defun *-> (channel val)
+    (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
+      (enqueue val (channels::channel-queue channel))
+      (sb-thread:condition-notify (channels::channel-waitqueue channel))
+      (next)))
+
+(defun <-* (channel)
+  (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
+    (let ((qval (dequeue (channels::channel-queue channel))))
+      (if (eq qval queue-empty)
+	  (yield)
+	  (progn
+	    (push qval stack)
+	    (next))))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun get-var-subs (body)

@@ -13,14 +13,6 @@
 (defvar n 1)
 (defvar *threads* 8)
 
-(defun mp (fn list)
-  (mapcar #'(lambda (li) 
-	      (if (or (typep li 'terminal)
-		      (typep li 'epsilon))
-		  li
-		  (funcall fn li))) list))
-  
-
 (defclass $tree ()
   ((root-node :accessor root-node :initarg :root-node :initform nil)))
 
@@ -30,6 +22,13 @@
 
 (defclass epsilon ($node) ())
 (defclass terminal ($node) ())
+
+(defun mp (fn list)
+  (mapcar #'(lambda (li) 
+	      (if (or (typep li 'terminal)
+		      (typep li 'epsilon))
+		  li
+		  (funcall fn li))) list))
 
 (defun create-epsilon (parent)
   (make-instance 'epsilon :parent parent))
@@ -45,9 +44,9 @@
 (defmethod make-children ((node $node))
   (let (ret)
     (dotimes (i b)
-      (if-let (child (gen-next-child node))
-	      (push (gen-next-child node) ret)
-	      (return nil)))
+      (utilities::if-let (child (gen-next-child node))
+	(push (gen-next-child node) ret)
+	(return nil)))
     (nreverse ret)))
 
 (defmethod make-children ((node epsilon))
@@ -232,49 +231,55 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;(defvar *thread-pool* (thread-pool:make-thread-pool 40))
-;(thread-pool:start-pool *thread-pool*)
-;;this will be better with thread pooling when i get around to modifying
-;;the thread-pool library to suit my needs
-;;right now will be pretty inefficient...
+;;this will be better with thread pooling when i get around to modifying thread pool library.
+;;right now has possibility to hang if I create (for example) 51 threads in the same thread group...
+;;could use make-thread to avoid this (easy fix) or hack on thread pool library to allow for
+;;thread pools which will dynamically expand rather than queuing.
 
-(defvar *par-threads* (make-hash-table :test 'eql :synchronized t))
-;;;actually, can probably do this differently with
-;;;an atomic queue or something that is local to the competeing threads.
+(defstruct thread-group
+  (lock (sb-thread:make-mutex))
+  (token-list nil))
 
-(defun apply-callback (function gcontsym callback)
+(defvar *thread-pool* (let ((tp (thread-pool:make-thread-pool 50)))
+			(thread-pool:start-pool tp)
+			tp))
+
+(defun add-callback (function thread-group thread-token callback)
   (lambda () 
     (funcall function)
-    (with-locked-hash-table (*par-threads*)
-      (setf (gethash *par-threads* gcontsym)
-	    (remove *current-thread* (gethash *par-threads* gcontsym)))
-      (unless (gethash *par-threads* gcontsym)
-	(funcall callback)))))
+      (sb-thread:with-mutex ((thread-group-lock thread-group))
+	(setf (thread-group-token-list thread-group)
+	      (remove thread-token (thread-group-token-list thread-group)))
+	(unless (thread-group-token-list thread-group)
+	  (funcall callback)))))
     
-
+;;caveat here is that anything which happens 
+;;consequent to a par must be within the 'continuation' body.
 (defmacro par (functions &body continuation)
   (let ((continuation `(lambda () ,@continuation))
 	(gcontsym (gensym))
-	(gcontinuation (gensym)))
-    `(let ((,gcontinuation ,continuation)
-	   (,gcontsym (gensym)))
-       (with-locked-hash-table (*par-threads*)
+	(thread-group (gensym)))
+    `(let ((,thread-group (make-thread-group))) 
+       (sb-thread:with-mutex ((thread-group-lock ,thread-group))
 	 ,@(mapcar 
-	    (lambda (function-code)  
-	      `(push (sb-thread:make-thread  
-		      (apply-callback ,function-code ,gcontsym ,continuation))
-		     (gethash *par-threads* ,gcontsym))) functions)))))
-	   
+	    (lambda (function-code)
+	      `(let ((,gcontsym (gensym)))
+		 (push ,gcontsym (thread-group-token-list ,thread-group))
+		 (thread-pool:add-to-pool cost-calc::*thread-pool* (cost-calc::add-callback ,function-code ,thread-group ,gcontsym ,continuation))))
+	    functions)))))
 
-#|(defun par (fnargs)
-  (let ((lambdas (mapcar #'(lambda (fnarg)
-			     #'(lambda () 
-				 (let ((k k)
-				       (b b))
-				 (apply (first fnarg) (rest fnarg)))))
-			 fnargs)))
-    (mapcar #'sb-thread:make-thread lambdas)))|#
+#|(let ((out *standard-output*))
+  (defun mklzfb (n)
+    (labels ((fib (n) (if (> n 2)
+			  (+ (fib (- n 1)) (fib (- n 2)))
+			  1)))
+      (lambda ()
+	(let ((m n))
+	  (format out "~%fib ~a = ~a~%" m (fib m)))))))
+  (defun mklzfb2 (n)
+    (lambda () (cost-calc::par ((mklzfb n) (mklzfb n)) (format t "subgroup done~%"))))|#
 
+#|(cost-calc::par ((mklzfb2 35) (mklzfb2 30) (mklzfb 25) (mklzfb 31) (mklzfb 12) (mklzfb 10) ) (format t "all done~%") (force-output))|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
