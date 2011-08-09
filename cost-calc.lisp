@@ -1,11 +1,9 @@
 ;par with lookahead
 ;$of par does it have cost?
 ;what does it mean?
-;
 
-(unless (find-package "COST-CALC")
-  (load "package"))
-
+(load "channels")
+(load "utilities")
 (load "fibers")
 
 (in-package "COST-CALC")
@@ -15,83 +13,12 @@
 (defvar n 1)
 (defvar *threads* 8)
 
-(defmacro if-let (binding then else)
-  `(let (,binding)
-     (if ,(first binding)
-	 ,then
-	 ,else
-	 )))
-
-(defun repeat (item)
-  (let ((li (list item)))
-    (nconc li li)))
-
-(defun cycle (items)
-  (let ((list (copy-list items)))
-    (nconc list list)))
-
-(defun split (lst by)
-  (let ((list (copy-list lst)))
-    (let (aux
-	  (partition-number (truncate (length list) by)))
-      (dotimes (i (- by 1))
-	(let (l)
-	  (dotimes (j partition-number)
-	    (push (pop list) l))
-	  (push (nreverse l) aux)))
-      (push list aux)
-      (nreverse aux))))
-
 (defun mp (fn list)
   (mapcar #'(lambda (li) 
 	      (if (or (typep li 'terminal)
 		      (typep li 'epsilon))
 		  li
 		  (funcall fn li))) list))
-
-(defun filter (fn list &aux aux)
-  (map nil #'(lambda (x) (when (funcall fn x)
-			   (push x aux))) list)
-  (nreverse aux))
-
-(defun curry (fn &rest items)
-  #'(lambda (&rest rest) (apply fn (append items rest))))
-
-(defun memoize (fn)
-  (let ((nothing (gensym "nothing"))
-	(hash (make-hash-table :test 'equalp)))
-    (flet ((memoize (fun)
-	     #'(lambda (&rest args)
-		 (let ((answer (gethash args hash nothing)))
-		   (if (eql answer nothing)
-		       (let ((memo (apply fun args)))
-			 ;(format t "~a, ~a~%" fun args)
-			 (setf (gethash args hash) memo)
-			 memo)
-		       answer)))))
-	     
-      (cond ((functionp fn)
-	     (memoize fn))
-	    ((symbolp fn)
-	     (if (fboundp fn)
-		 (if (get fn :def)
-		     (error "symbol ~a already memoized, unmemoize first~%" fn)
-		     (let ((rfn (symbol-function fn)))
-		       (setf (symbol-function fn) (memoize rfn))
-		       (setf (get fn :def) rfn)))
-		 (error "attempted memoize ~a isn't fbound~%" fn)))))))
-
-(defun unmemoize (fn)
-  (let ((def (get fn :def)))
-    (when def (setf (symbol-function fn) def))
-    (setf (get fn :def) nil)))
-
-(defmacro with-memoizations (symbols &body body)
-  `(unwind-protect 
-	(progn   
-	  ,@(mapcar #'(lambda (s) `(memoize ',s)) symbols)
-	  ,@body)
-     (progn ,@(mapcar #'(lambda (s) `(unmemoize ',s)) symbols))))
   
 
 (defclass $tree ()
@@ -133,21 +60,16 @@
 (defgeneric children (node &optional depth))
 
 (defmethod children ((node $node) &optional (depth k))
-  ;(format t "~a, ~a~%" node k)
   (cond ((%children node)
-	; (format t "1~%")
 	 (%children node))
 	((> depth 0)
-					;(format t "2~%")
 	 (let ((children (make-children node)))
 	   (setf (%children node) children)
 	   children))
 	((= depth 0)
-	 ;(format t "3~%")
 	 (unless (or (typep node 'epsilon)
 		     (typep node 'terminal))
 	   (let ((epsilon (list (create-epsilon node))))
-	     ;(setf (%children node) epsilon)
 	     epsilon)))
 	((< depth 0)
 	 (error "Child generation to depth greater than maximum"))))
@@ -175,7 +97,6 @@
 			  (t
 			   (children node)))))
       (labels ((select-1 (nde)
-		 ;(format t "s:~a~%" k)
 		 (unless (or (typep nde 'terminal)
 			     (typep nde 'epsilon))
 		   (let ((children (children nde)))
@@ -186,80 +107,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (defstruct q-node
-    before
-    after
-    value)
 
-  (defstruct queue
-    (head)
-    (tail))
-
-  (defvar queue-empty '#:|queue-empty|)
-
-;;i think you can do this with a circular list and a marker, rather than structs.. not sure.
-;;this works fine for now, however.
-
-  (defun enqueue (item queue)
-    (let ((node (make-q-node :value item)))
-      (cond ((and (eq (queue-head queue) nil) (eq (queue-tail queue) nil))
-	     (setf (queue-head queue) node)
-	     (setf (queue-tail queue) node))
-	    (t
-	     (let ((tail (queue-tail queue)))
-	       (setf (q-node-after tail) node)
-	       (setf (q-node-before node) tail)
-	       (setf (queue-tail queue) node))))))
-
-	 
-
-  (defun dequeue (queue)
-    (let ((head (queue-head queue)))
-      (if head
-	  (progn
-	    (setf (queue-head queue) (q-node-after head))
-	    (if (q-node-after head)
-		(setf (q-node-before (q-node-after head)) nil)
-		(setf (queue-tail queue) nil))
-	    (q-node-value head))
-	  queue-empty)))
-
-  (defstruct channel 
-    name
-    mutex
-    queue
-    waitqueue)
-
-  (defun channel (&optional namestring)
-    (make-channel :name (or namestring "")
-		  :waitqueue (sb-thread:make-waitqueue)
-		  :mutex (sb-thread:make-mutex :name namestring)
-		  :queue (make-queue)))
-
-  (defmacro defchannel (symbol)
-    `(defparameter ,symbol (channel ,(symbol-name symbol))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (defun -> (channel val)
-    (sb-thread:with-mutex ((channel-mutex channel))
-      (enqueue val (channel-queue channel))
-      (sb-thread:condition-notify (channel-waitqueue channel))))
-
-  (defun <- (channel)
-    (sb-thread:with-mutex ((channel-mutex channel))
-      (let ((qval (dequeue (channel-queue channel))))
-	(if (eq qval queue-empty)
-	    (progn (sb-thread:condition-wait
-		    (channel-waitqueue channel)
-		    (channel-mutex channel))
-		   (dequeue (channel-queue channel)))
-	    qval))))
-
-(defun receive (chan num &aux li)
-  (dotimes (i num)
-    (push (<- chan) li))
-  li)
+ 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defmacro choice (&rest choices)
     (let ((counter 0)
@@ -380,27 +232,39 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defvar *thread-channels*)
+;(defvar *thread-pool* (thread-pool:make-thread-pool 40))
+;(thread-pool:start-pool *thread-pool*)
+;;this will be better with thread pooling when i get around to modifying
+;;the thread-pool library to suit my needs
+;;right now will be pretty inefficient...
 
-(eval-when (:load-toplevel)
-  (let (channels threads)
-    (dotimes (i *threads*)
-      (push (channel) channels))
-    (setf threads 
-	  (mapcar #'(lambda (channel)
-		      (sb-thread:make-thread 
-		       #'(lambda () 
-			   (do ((fn (<- channel) (<- channel)))
-			       (NIL)
-			     (funcall fn)))))
-		  channels))
-    (setf *thread-channels* channels)))
+(defvar *par-threads* (make-hash-table :test 'eql :synchronized t))
+;;;actually, can probably do this differently with
+;;;an atomic queue or something that is local to the competeing threads.
 
-(defun par (fns)
-  (let ((chans (cycle *thread-channels*)))
-    (dolist (fn fns)
-      (-> (car chans) fn)
-      (setf chans (cdr chans)))))
+(defun apply-callback (function gcontsym callback)
+  (lambda () 
+    (funcall function)
+    (with-locked-hash-table (*par-threads*)
+      (setf (gethash *par-threads* gcontsym)
+	    (remove *current-thread* (gethash *par-threads* gcontsym)))
+      (unless (gethash *par-threads* gcontsym)
+	(funcall callback)))))
+    
+
+(defmacro par (functions &body continuation)
+  (let ((continuation `(lambda () ,@continuation))
+	(gcontsym (gensym))
+	(gcontinuation (gensym)))
+    `(let ((,gcontinuation ,continuation)
+	   (,gcontsym (gensym)))
+       (with-locked-hash-table (*par-threads*)
+	 ,@(mapcar 
+	    (lambda (function-code)  
+	      `(push (sb-thread:make-thread  
+		      (apply-callback ,function-code ,gcontsym ,continuation))
+		     (gethash *par-threads* ,gcontsym))) functions)))))
+	   
 
 #|(defun par (fnargs)
   (let ((lambdas (mapcar #'(lambda (fnarg)
@@ -421,7 +285,6 @@
     (dotimes (i n)
       (let ((children (children (root-node tree))))
 	(setf (root-node tree) (first (intersection ancestors children))))
-      ;(format t "r: ~a~%" (root-node tree))
       )))
 
 (defmacro k-omega (inits (max-t k b n) goal-body select-body exam-body exec-body)

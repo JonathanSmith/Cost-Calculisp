@@ -1,23 +1,33 @@
-(defpackage "COST-CALC"
-  (:use "COMMON-LISP")
-  (:export
-   "INFINITY"
-   "EPSILON"
-   "MAX-DEPTH"
-   "DEPTH"
-   "$STACK"
-   "COST"
-   "SETCOST"
-   "DEFCOST"
-   "SETEPS"
-   "DEFEPS"
-   "DEF$"
-   "$MIN"
-   "$MAX"
-   "$SEQ"))
+(ql:quickload "thread-pool")
 
-(defpackage :fibers
+(defpackage utilities
   (:use :common-lisp)
+  (:export #:if-let 
+	   #:repeat
+	   #:cycle
+	   #:split
+	   #:filter
+	   #:curry
+	   #:memoize
+	   #:unmemoize
+	   #:with-memoizations))
+
+(defpackage channels
+  (:use :common-lisp)
+  (:export
+   #:q-node
+   #:queue
+   #:queue-empty
+   #:enqueue
+   #:dequeue
+   #:channel
+   #:defchannel
+   #:->
+   #:<-
+   #:receive))
+
+(defpackage fibers
+  (:use :common-lisp :utilities :channels)
   (:export 
    #:channel
    #:defchannel
@@ -45,3 +55,24 @@
    #:dmac
    #:define
    #:flambda))
+
+
+(defpackage cost-calc
+  (:use :common-lisp :utilities :channels)
+  (:export
+   #:INFINITY
+   #:EPSILON
+   #:MAX-DEPTH
+   #:DEPTH
+   #:$STACK
+   #:COST
+   #:SETCOST
+   #:DEFCOST
+   #:SETEPS
+   #:DEFEPS
+   #:DEF$
+   #:$MIN
+   #:$MAX
+   #:$SEQ))
+
+

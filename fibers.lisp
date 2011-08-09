@@ -3,68 +3,6 @@
 (defvar max-priority 15)
 (defvar min-priority 5)
 
-(defun filter (fn list &aux aux)
-  (map nil #'(lambda (x) (when (funcall fn x)
-			   (push x aux))) list)
-  (nreverse aux))
-
- (defstruct q-node
-    before
-    after
-    value)
-
-  (defstruct queue
-    (head)
-    (tail))
-
-  (defvar queue-empty '#:queue-empty)
-
-;;i think you can do this with a circular list and a marker, rather than structs.. not sure.
-;;this works fine for now, however.
-
-  (defun enqueue (item queue)
-    (let ((node (make-q-node :value item)))
-      (cond ((and (eq (queue-head queue) nil) (eq (queue-tail queue) nil))
-	     (setf (queue-head queue) node)
-	     (setf (queue-tail queue) node))
-	    (t
-	     (let ((tail (queue-tail queue)))
-	       (setf (q-node-after tail) node)
-	       (setf (q-node-before node) tail)
-	       (setf (queue-tail queue) node))))))
-
-	 
-
-  (defun dequeue (queue)
-    (let ((head (queue-head queue)))
-      (if head
-	  (progn
-	    (setf (queue-head queue) (q-node-after head))
-	    (if (q-node-after head)
-		(setf (q-node-before (q-node-after head)) nil)
-		(setf (queue-tail queue) nil))
-	    (q-node-value head))
-	  queue-empty)))
-
-  (defstruct channel 
-    name
-    mutex
-    queue
-    waitqueue)
-
-  (defun channel (&optional namestring)
-    (make-channel :name (or namestring "")
-		  :waitqueue (sb-thread:make-waitqueue)
-		  :mutex (sb-thread:make-mutex :name namestring)
-		  :queue (make-queue)))
-
-  (defmacro defchannel (symbol)
-    `(defparameter ,symbol (channel ,(symbol-name symbol))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defstruct proc 
   (priority min-priority)
@@ -108,56 +46,41 @@
 
 (defvar bind-translation nil)
 
-(defun -> (channel val)
-    (sb-thread:with-mutex ((channel-mutex channel) :wait-p nil)
-      (enqueue val (channel-queue channel))
-      (sb-thread:condition-notify (channel-waitqueue channel))
+(defun *-> (channel val)
+    (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
+      (enqueue val (channels::channel-queue channel))
+      (sb-thread:condition-notify (channels::channel-waitqueue channel))
       (next)))
 
-(defun <- (channel)
-  (sb-thread:with-mutex ((channel-mutex channel) :wait-p nil)
-    (let ((qval (dequeue (channel-queue channel))))
+(defun <-* (channel)
+  (sb-thread:with-mutex ((channels::channel-mutex channel) :wait-p nil)
+    (let ((qval (dequeue (channels::channel-queue channel))))
       (if (eq qval queue-empty)
 	  (yield)
 	  (progn
 	    (push qval stack)
 	    (next))))))
 
- (defun *-> (channel val)
-   (sb-thread:with-mutex ((channel-mutex channel))
-     (enqueue val (channel-queue channel))
-     (sb-thread:condition-notify (channel-waitqueue channel))))
-
- (defun <-* (channel)
-   (sb-thread:with-mutex ((channel-mutex channel))
-     (let ((qval (dequeue (channel-queue channel))))
-       (if (eq qval queue-empty)
-	   (progn (sb-thread:condition-wait
-		   (channel-waitqueue channel)
-		   (channel-mutex channel))
-		  (dequeue (channel-queue channel)))
-	   qval))))
-
 
 (defmacro with-proc (proc &body body)
   (let ((genv (gensym "env")))
     `(let* ((,genv ,proc))
        (when ,genv
-	 (let* ((mbox (proc-channel ,genv))
-		(priority (proc-priority ,genv))
-		(heap (proc-heap ,genv))
-		(stack (proc-stack ,genv))
-		(execution (proc-program ,genv))
-		(ptr (proc-ptr ,genv))
+	 (let* ((mbox (fibers::proc-channel ,genv))
+		(priority (fibers::proc-priority ,genv))
+		(heap (fibers::proc-heap ,genv))
+		(stack (fibers::proc-stack ,genv))
+		(execution (fibers::proc-program ,genv))
+		(ptr (fibers::proc-ptr ,genv))
 		(yield nil))
 
 	   (unwind-protect 
 		(progn ,@body)
-	     (setf (proc-priority ,genv) priority)
-	     (setf (proc-heap ,genv) heap)
-	     (setf (proc-program ,genv) execution)
-	     (setf (proc-stack ,genv) stack)
-	     (setf (proc-ptr ,genv) ptr)))))))
+	     (setf (fibers::proc-priority ,genv) priority)
+	     (setf (fibers::proc-heap ,genv) heap)
+	     (setf (fibers::proc-program ,genv) execution)
+	     (setf (fibers::proc-stack ,genv) stack)
+	     (setf (fibers::proc-ptr ,genv) ptr)))))))
 
 (defun cpush (item cyclic)
   ;(format t "~s~%" (list item cyclic))
@@ -172,7 +95,6 @@
 	    (pop ,cyclic)))
 	(let* ((,c2 ,cyclic)
 	       (item (cadr ,c2)))
-	  ;(format t "~a: ~a | ~a~%~%" item (car ,cyclic) (caddr ,cyclic))
 	  (if (eql (car ,c2) (caddr ,c2))
 	      (setf ,cyclic (let ((li (list empty)))
 			      (nconc li li)))
@@ -223,7 +145,7 @@
   (setf (first ptr) i))
 
 (defmacro jump-when (condition i)
-  `(if ,condition (jump ,i) (next)))
+  `(if ,condition (fibers::jump ,i) (next)))
 
 
 (defun call (function &rest args)
@@ -240,7 +162,7 @@
   (pop execution)
   (pop ptr))
 
-(eval-when (:compile-toplevel :load-toplevel)
+(eval-when (:compile-toplevel :load-toplevel :execute)
   (defun get-var-subs (body)
     (let ((max-var 0)
 	  (counter 0)
@@ -276,7 +198,7 @@
 (defmacro progm (fnname taglist body)
   (multiple-value-bind (binding count) (get-var-subs body)
     (setf body (filter #'(lambda (x) (not (unbindp x))) body))
-    `(defparameter ,fnname (make-fun 
+    `(defparameter ,fnname (fibers::make-fun 
 			    :name ,(symbol-name fnname) 
 			    :vars-len ,count
 			    :program  
@@ -347,7 +269,7 @@
 		    (NIL)
 		  (apply fn (<-* chan))))))
 
-(eval-when (:load-toplevel :compile-toplevel)
+(eval-when (:load-toplevel :compile-toplevel :execute)
   (defvar macs (make-hash-table)))
 
 (defmacro dmac (&body body)
