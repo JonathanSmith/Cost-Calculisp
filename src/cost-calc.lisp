@@ -232,38 +232,8 @@
 ;;could use make-thread to avoid this (easy fix) or hack on thread pool library to allow for
 ;;thread pools which will dynamically expand rather than queuing.
 
-(defstruct thread-group
-  (lock (sb-thread:make-mutex))
-  (token-list nil))
-
-(defvar *thread-pool* (let ((tp (thread-pool:make-thread-pool 50)))
-			(thread-pool:start-pool tp)
-			tp))
-
-(defun add-callback (function thread-group thread-token callback)
-  (lambda () 
-    (funcall function)
-      (sb-thread:with-mutex ((thread-group-lock thread-group))
-	(setf (thread-group-token-list thread-group)
-	      (remove thread-token (thread-group-token-list thread-group)))
-	(unless (thread-group-token-list thread-group)
-	  (funcall callback)))))
-    
-;;caveat here is that anything which happens 
-;;consequent to a par must be within the 'continuation' body.
-
-(defmacro par (functions &body continuation)
-  (let ((continuation `(lambda () ,@continuation))
-	(gcontsym (gensym))
-	(thread-group (gensym)))
-    `(let ((,thread-group (make-thread-group))) 
-       (sb-thread:with-mutex ((thread-group-lock ,thread-group))
-	 ,@(mapcar 
-	    (lambda (function-code)
-	      `(let ((,gcontsym (gensym)))
-		 (push ,gcontsym (thread-group-token-list ,thread-group))
-		 (thread-pool:add-to-pool cost-calc::*thread-pool* (cost-calc::add-callback ,function-code ,thread-group ,gcontsym ,continuation))))
-	    functions)))))
+(defun par (&rest functions)
+  (mapcar #'sb-thread:join-thread (mapcar #'sb-thread:make-thread functions)))
 
 #|(let ((out *standard-output*))
   (defun mklzfb (n)
@@ -271,12 +241,16 @@
 			  (+ (fib (- n 1)) (fib (- n 2)))
 			  1)))
       (lambda ()
-	(let ((m n))
-	  (format out "~%fib ~a = ~a~%" m (fib m)))))))
-  (defun mklzfb2 (n)
-    (lambda () (cost-calc::par ((mklzfb n) (mklzfb n)) (format t "subgroup done~%"))))|#
+	(let* ((m n)
+	      (fib-m (fib m)))
+	  (format out "~%fib ~a = ~a~%" m fib-m)
+	  fib-m)))))
 
-#|(cost-calc::par ((mklzfb2 35) (mklzfb2 30) (mklzfb 25) (mklzfb 31) (mklzfb 12) (mklzfb 10) ) (format t "all done~%") (force-output))|#
+
+  (defun mklzfb2 (n)
+    (lambda () (cost-calc::par (mklzfb n) (mklzfb n))))|#
+
+#|(cost-calc::par (mklzfb2 35)(mklzfb 30) (mklzfb 25) (mklzfb 31) (mklzfb 12) (mklzfb 10))|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

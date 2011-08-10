@@ -3,7 +3,7 @@
 (defsystem :cost-calc
     :name "cost-calc"
     :version "0.0.1"
-    :components ((:module "source"
+    :components ((:module "src"
 			  :components ((:file "defpackages")
 				       (:file "cost-calc"
 					      :depends-on
