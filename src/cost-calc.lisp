@@ -2,10 +2,6 @@
 ;$of par does it have cost?
 ;what does it mean?
 
-(load "channels")
-(load "utilities")
-(load "fibers")
-
 (in-package "COST-CALC")
 (defvar infinity most-positive-fixnum)
 (defvar k infinity)
