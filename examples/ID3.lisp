@@ -78,6 +78,7 @@
 	      (set-difference (all-attributes node) 
 			      (cons (attribute node) (mapcar #'attribute (ancestors node))))
 	      (set-difference (all-attributes node) (list (attribute node))))))
+    
 
     (if available-attributes
 	(let (children)
@@ -95,7 +96,8 @@
 				       :value val
 				       :subset subset) val-nodes)))
 	      (push val-nodes children)))
-	  (setf (%children node) children))
+	 ; (format t "~s~%" children)
+	  (setf (%children node) (apply #'concatenate 'list children)))
 	(list (create-terminal node)))))
 
 (defun entropy (node &optional (dataset (dataset node)))
@@ -110,7 +112,7 @@
 		    (when (eql (funcall attribute instance) value)
 		      (incf count)))
 		dataset)
-	(push (/ count set-size) proportion-list)))
+	(push (if (= set-size 0) 0 (/ count set-size)) proportion-list)))
     (reduce #'+ (mapcar #'(lambda (c) (if (> c 0) (* (- c) (log c 2)) 0)) proportion-list))))
 
 (defun gain (node next-node)
@@ -120,6 +122,8 @@
 	 (next-attribute (attribute next-node))
 	 (partition nil)
 	 (countlist nil))
+   (when (= total 0)
+     (return-from gain 0))
     (dolist (value values)
       (let ((sublist nil)
 	    (count 0))
@@ -145,32 +149,29 @@
   (apply #'max (mapcar #'$ list)))
 
 (defun id3 (root)
-  (labels ((a (node) ($max node)))
-    (k-omega (exec (leafs ($max (children root))))
-	     (infinity 1 infinity 1)
+  (k-omega ((leaf ($max (children root))))
+	   (infinity 1 infinity 1)
+	      
+	   (eql (class-of leaf) (find-class 'terminal))
 
-	     (progn
-	       (format t "~s~%" leafs)
-	       (every (lambda (x) 
-			(eql (class-of x) (find-class 'terminal)))
-		      leafs))
-	      (progn
-		(format t "~s~%" leafs)
-		(mapcan #'select leafs))
+	   (progn
+	     (select leaf)
+	     (format t "A~s~%" leaf))
 
-	      (progn
-		(format t "~s~%" leafs) 
-		(setf leafs (mapcan #'a leafs)))
-	     (setf root leafs))
-    root))
-#|
+	   (progn
+	     (setf leaf  ($max (seq leaf)))
+	     (format t "B~s~%" leaf))
 
-  (def-dataset house
-    (district suburban rural urban)
-    (house-type detached semi-detached terrace)
-    (income high low)
-    (previous yes no)
-    (outcome nothing responded))
+	   (setf root leaf))
+  root)
+
+
+(def-dataset house
+  (district suburban rural urban)
+  (house-type detached semi-detached terrace)
+  (income high low)
+  (previous yes no)
+  (outcome nothing responded))
 (progn
   (house Suburban Detached High No Nothing)
   (house Suburban 	Detached 	High 	Yes 	Nothing)
@@ -187,6 +188,14 @@
   (house Rural 	Detached 	Low 	No 	Responded)
   (house Urban 	Terrace 	High 	Yes 	Nothing))
 
+(defun run-id3-house () (id3 (make-instance 'id3-root
+					    :dataset-symbol 'house
+					    :value nil
+					    :attribute nil
+					    :subset nil
+					    )))
+
+#|
 (def-dataset customer-data
   (age "0-12" "13-21")
   (education "High School" "College")
@@ -194,3 +203,20 @@
   (marital-status "YES" "NO")
   (purchase? "YES" "NO"))
 |#
+
+#|(def-dataset s
+  (
+D1	Sunny	Hot	High	Weak	No
+D2	Sunny	Hot	High	Strong	No
+D3	Overcast	Hot	High	Weak	Yes
+D4	Rain	Mild	High	Weak	Yes
+D5	Rain	Cool	Normal	Weak	Yes
+D6	Rain	Cool	Normal	Strong	No
+D7	Overcast	Cool	Normal	Strong	Yes
+D8	Sunny	Mild	High	Weak	No
+D9	Sunny	Cool	Normal	Weak	Yes
+D10	Rain	Mild	Normal	Weak	Yes
+D11	Sunny	Mild	Normal	Strong	Yes
+D12	Overcast	Mild	High	Strong	Yes
+D13	Overcast	Hot	Normal	Weak	Yes
+D14	Rain	Mild	High	Strong	No|#
