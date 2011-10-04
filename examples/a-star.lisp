@@ -25,22 +25,20 @@
 
 (defmacro location (name x y &rest connections)
   (let ((location (gensym "point")))
-    `(eval-when (:load-toplevel)
-       (let ((,location (make-instance 'A*-node
+    `(let ((,location (make-instance 'A*-node
 				       :name ',name
 				       :point (make-point :x ,x :y ,y)
 				       :connections ',connections)))
-	 (setf (gethash ',name *all-nodes*) ,location)))))
+	 (setf (gethash ',name *all-nodes*) ,location))))
 
 (defmacro goal (name x y &rest connections)
   (let ((goal (gensym "goal")))
-    `(eval-when (:load-toplevel)
-       (let ((,goal (make-instance 'A*-goal
+    `(let ((,goal (make-instance 'A*-goal
 				   :name ',name
 				   :point (make-point :x ,x :y ,y)
 				   :connections ',connections)))
 	 (setf (gethash ',name *all-nodes*) ,goal)
-	 (setf (gethash 'goal *all-nodes*) ,goal)))))
+	 (setf (gethash 'goal *all-nodes*) ,goal))))
 
 (defun get-loc (name)
   (gethash name *all-nodes*))
@@ -77,39 +75,34 @@
 		(setf (marked? child) t)
 		(setf (parent child) node)) children)
     (if (= (length children) 0)
-	(error "wtf?")
+	(error "length children error")
 	children)))
 
 (defmethod make-children ((node A*-goal))
   nil)
 
-(goal A 5 2 B C)
-(location B 6 7 C D A)
-(location C 3 4 E B A)
-(location D 4 6 B E)
-(location E 2 4 C D F)
-(location F 6 1 E G)
-(location G 0 8 F)
-
-(defparameter *tree* (make-instance '$tree :root-node (get-loc 'g)))
-
-(defun A* (tree)
+(defun A* (current)
   (labels ((a (node) 
 	     (let ((s (seq node)))
-	       ;(format t "~a~%" s)
 	       ($min s))))
-    (k-omega ((root (root-node tree))
+    (k-omega ((root current)
 	      (selection root))
-
 	     (infinity 1 infinity infinity)
-
 	     (when (typep selection 'terminal)
-	       (setf (root-node tree) selection))
- 
-	       (select selection)
-	       
-	       (setf selection (a root))
-
+	       (setf current selection))
+	     (select selection)
+	     (setf selection (a root))
 	     nil)
 
-    (mapcar #'node-name (stack (root-node tree)))))
+    (mapcar #'node-name (stack current))))
+
+(defun run-a* (node)
+  (setf *all-nodes* (make-hash-table))
+  (goal A 5 2 B C)
+  (location B 6 7 C D A)
+  (location C 3 4 E B A)
+  (location D 4 6 B E)
+  (location E 2 4 C D F)
+  (location F 6 1 E G)
+  (location G 0 8 F)
+  (a* (get-loc node)))

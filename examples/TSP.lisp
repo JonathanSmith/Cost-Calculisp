@@ -66,14 +66,9 @@
 	     ($min (seq node))))
     (k-omega (selection)
 	     (infinity 1 infinity 1)
-
 	     (typep (root-node tree) 'terminal)
-
 	     (select (root-node tree))
-
 	     (setf selection (a (root-node tree)))
-		    
-
 	     (setf (root-node tree) selection))
 
     (mapcar #'node-name (ancestors (root-node tree)))))
@@ -83,16 +78,10 @@
 	     ($min (seq node))))
     (k-omega (selection)
 	     (infinity 2 infinity 2)
-
 	     (typep (root-node tree) 'terminal)
-
 	     (select (root-node tree))
-
 	     (setf selection (a (root-node tree)))
-		    
-
 	     (setf (root-node tree) selection))
-
     (mapcar #'node-name (ancestors (root-node tree)))))
 
 (defun next-next-nearest-neighbor (tree)
@@ -100,14 +89,9 @@
 	     ($min (seq node))))
     (k-omega (selection)
 	     (infinity 3 infinity 3)
-
 	     (typep (root-node tree) 'terminal)
-
 	     (select (root-node tree))
-
 	     (setf selection (a (root-node tree)))
-		    
-
 	     (setf (root-node tree) selection))
 
     (mapcar #'node-name (ancestors (root-node tree)))))
@@ -117,14 +101,9 @@
 	     ($min (seq node))))
     (k-omega (selection)
 	     (infinity infinity infinity infinity)
-
 	     (typep (root-node tree) 'terminal)
-
 	     (select (root-node tree))
-
 	     (setf selection (a (root-node tree)))
-		    
-
 	     (setf (root-node tree) selection))
 
     (mapcar #'node-name (ancestors (root-node tree)))))
@@ -134,14 +113,9 @@
 	       ($min (seq node))))
       (k-omega (selection)
 	       (infinity infinity infinity infinity)
-
 	       (typep (root-node tree) 'terminal)
-
 	       (select (root-node tree))
-
 	       (setf selection (a (root-node tree)))
-		    
-
 	       (setf (root-node tree) selection))
 
       (mapcar #'node-name (ancestors (root-node tree)))))

@@ -69,6 +69,7 @@
 	((< depth 0)
 	 (error "Child generation to depth greater than maximum"))))
 
+
 (defmethod ancestors ((node $node))
   (let (ancestors)
     (do ((parent (parent node) (parent parent)))
@@ -85,19 +86,24 @@
 
 (defun select (node)
   (unless (typep node 'terminal)
+    ;(format t "A~s~%" node)
     (let ((children (cond ((typep node 'epsilon)
 			   (make-children node))
-			  ((null node)
-			   (error "wtf?"))
-			  (t
-			   (children node)))))
-      (labels ((select-1 (nde)
-		 (unless (or (typep nde 'terminal)
-			     (typep nde 'epsilon))
-		   (let ((children (children nde)))
-		     (let ((k (- k 1)))
-		       (mapcar #'select-1 children))))))
-	(mapcar #'select-1 children))))
+			  ((typep node '$node)
+			   (children node k))
+			  (t (error "selection-error node:~s k:~s" node k)))))
+     ; (format t "B~s~%" children)
+      (let ((k (- k 1)))
+	(labels ((select-1 (nde)
+		   (unless (or (typep nde 'terminal)
+			       (typep nde 'epsilon))
+;		     (format t "C~s~%" nde)
+		     (let ((children (if (typep node '$node)
+					 (children nde k)
+					 (error "selection-error node:~s k:~s" node k))))
+		       (let ((k (- k 1)))
+			 (mapcar #'select-1 children))))))
+	  (mapcar #'select-1 children)))))
   nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -261,7 +267,7 @@
       )))
 
 (defmacro k-omega (inits (max-t k b n) goal-body select-body exam-body exec-body)
-  (let ((ti (gensym "ti"))
+  (let* ((ti (gensym "ti"))
 	(mt (gensym "mt"))
 	(goal (gensym "goal"))
 	(select (gensym "select")) 

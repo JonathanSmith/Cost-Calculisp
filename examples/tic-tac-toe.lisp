@@ -15,7 +15,7 @@
 	(incf count)))
 
     (labels ((tile (num)
-	       (or (aref board num) " ")))
+	       (or (aref board num) (format nil "~a"(1+ num)))))
 
       
       (format stream "~&|~a|~a|~a|~%" (tile 0) (tile 1) (tile 2))
@@ -68,7 +68,7 @@
 	     (d (node)
 	       (let* ((s (seq node))
 		      (nodefns (mapcar #'curry (repeat #'c) s)))
-		 (par nodefns)
+		 (apply #'par nodefns)
 		 ($min (receive chan (length s))))))
  
       (k-omega (selection (root (root-node tree)))
@@ -92,7 +92,7 @@
 	     (d (node)
 	       (let* ((s (seq node))
 		      (nodefns (mapcar #'curry (repeat #'c) s)))
-		 (par nodefns)
+		 (apply #'par nodefns)
 		 ($max (receive chan (length s))))))
  
       (k-omega (selection (root (root-node tree)))
