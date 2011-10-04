@@ -208,10 +208,8 @@
 |#
 
 (defun seq (node &aux ret)
-  ;(format t "~a~%" node)
   (labels ((seq-1 (nde)
 	     (let ((children (%children nde)))
-	      ; (format t "~a, ~a, ~a~%" n nde (%children nde))
 	       (if (or 
 		    (null children)
 		    (typep nde 'terminal)
@@ -221,19 +219,19 @@
 		   (let ((n (- n 1)))
 		     (mapcar #'seq-1 children))))))
     (seq-1 node))
-  ;(format t "~s~%" ret)
   ret)
 	      
-
+(defun blocked ()
+  (throw :blocked :blocked))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;this will be better with thread pooling when i get around to modifying thread pool library.
-;;right now has possibility to hang if I create (for example) 51 threads in the same thread group...
-;;could use make-thread to avoid this (easy fix) or hack on thread pool library to allow for
-;;thread pools which will dynamically expand rather than queuing.
-
 (defun par (&rest functions)
-  (mapcar #'sb-thread:join-thread (mapcar #'sb-thread:make-thread functions)))
+  (mapcar #'sb-thread:join-thread
+	  (mapcar #'sb-thread:make-thread 
+		  (mapcar (lambda (fun)
+			    (lambda ()
+			      (catch :blocked
+				(funcall fun)))) functions))))
 
 #|(let ((out *standard-output*))
   (defun mklzfb (n)
@@ -241,16 +239,15 @@
 			  (+ (fib (- n 1)) (fib (- n 2)))
 			  1)))
       (lambda ()
-	(let* ((m n)
-	      (fib-m (fib m)))
-	  (format out "~%fib ~a = ~a~%" m fib-m)
+	(let* (
+	      (fib-m (fib n)))
+	  (format out "~%fib ~a = ~a~%" n fib-m)
 	  fib-m)))))
-
 
   (defun mklzfb2 (n)
     (lambda () (cost-calc::par (mklzfb n) (mklzfb n))))|#
 
-#|(cost-calc::par (mklzfb2 35)(mklzfb 30) (mklzfb 25) (mklzfb 31) (mklzfb 12) (mklzfb 10))|#
+#|(cost-calc::par (mklzfb2 35)(mklzfb 30) (lambda () (cost-calc::blocked) (do () (NIL))) (mklzfb 25) (mklzfb 31) (mklzfb 12) (mklzfb 10))|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
