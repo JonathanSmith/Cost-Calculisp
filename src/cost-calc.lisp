@@ -54,6 +54,11 @@
 
 (defgeneric children (node &optional depth))
 
+(defun set-children (node value)
+  (setf (%children node) value))
+
+(defsetf children set-children)
+
 (defmethod children ((node $node) &optional (depth k))
   (cond ((%children node)
 	 (%children node))
@@ -86,18 +91,15 @@
 
 (defun select (node)
   (unless (typep node 'terminal)
-    ;(format t "A~s~%" node)
     (let ((children (cond ((typep node 'epsilon)
 			   (make-children node))
 			  ((typep node '$node)
 			   (children node k))
 			  (t (error "selection-error node:~s k:~s" node k)))))
-     ; (format t "B~s~%" children)
       (let ((k (- k 1)))
 	(labels ((select-1 (nde)
 		   (unless (or (typep nde 'terminal)
 			       (typep nde 'epsilon))
-;		     (format t "C~s~%" nde)
 		     (let ((children (if (typep node '$node)
 					 (children nde k)
 					 (error "selection-error node:~s k:~s" node k))))
